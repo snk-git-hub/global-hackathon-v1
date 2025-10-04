@@ -1,16 +1,12 @@
 {
   "name": "acta-hackathon-starter",
   "version": "1.0.0",
-  "packageManager": "pnpm@10.18.0",
   "description": "ACTA 24-hour Global Hackathon starter repository",
   "main": "index.js",
   "scripts": {
     "verify": "node verify-submission.js",
-    "dev": "turbo run dev",
-    "start": "turbo run start",
-    "build": "turbo run build",
-    "lint": "turbo run lint",
-    "test": "turbo run test"
+    "start": "echo 'Add your start command here!'",
+    "test": "echo 'Add your test command here!'"
   },
   "keywords": [
     "hackathon",
@@ -22,8 +18,5 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/actastudios/global-hackathon-v1"
-  },
-  "devDependencies": {
-    "turbo": "^2.5.8"
   }
 }

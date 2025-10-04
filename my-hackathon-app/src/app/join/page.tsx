@@ -2,12 +2,16 @@
 import Link from 'next/link'
 import { useState, useEffect } from "react";
 import { useRouter } from 'next/navigation';
+import { supabase } from '../../lib/supabase';
 
 export default function JoinRoom() {
   const router = useRouter();
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [roomId, setRoomId] = useState("");
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [createdRoomId, setCreatedRoomId] = useState(""); // Store the successfully created room ID
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -15,7 +19,55 @@ export default function JoinRoom() {
     };
 
     window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+
+    const getUser = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.log('Session error:', sessionError);
+          setUser(null);
+          return;
+        }
+
+        if (session) {
+          const { data: { user }, error: userError } = await supabase.auth.getUser();
+          
+          if (userError) {
+            console.log('User error:', userError);
+            setUser(null);
+          } else {
+            setUser(user);
+          }
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Unexpected error getting user:', error);
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    getUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event);
+        if (event === 'SIGNED_IN' && session) {
+          const { data: { user } } = await supabase.auth.getUser();
+          setUser(user);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        }
+      }
+    );
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const generateRoomId = () => {
@@ -27,25 +79,221 @@ export default function JoinRoom() {
     return result;
   };
 
-  const handleJoinRoom = (e: React.FormEvent) => {
+  const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (roomId.trim()) {
-      console.log("Joining room:", roomId);
-      // router.push(`/canvas/${roomId}`);
-      alert(`Joining room: ${roomId}`);
+    if (!roomId.trim()) {
+      alert('Please enter a room ID');
+      return;
+    }
+
+    if (!user) {
+      alert('Please sign in to join a room');
+      router.push('/signin');
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('Your session has expired. Please sign in again.');
+        router.push('/signin');
+        return;
+      }
+
+      // Use the exact room ID from input (uppercase)
+      const roomCode = roomId.toUpperCase().trim();
+      
+      const { data: room, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('code', roomCode)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error checking room:', error);
+        
+        if (error.code === '42501') {
+          alert('Permission denied. Please check if RLS policies are properly configured.');
+        } else {
+          alert('Error joining room: ' + error.message);
+        }
+        return;
+      }
+
+      if (!room) {
+        alert('Room not found. Please check the room ID.');
+        return;
+      }
+
+      const { error: memberError } = await supabase
+        .from('room_members')
+        .insert({
+          room_id: room.id,
+          user_id: user.id
+        });
+
+      if (memberError) {
+        console.error('Error joining room:', memberError);
+        if (memberError.code !== '23505') {
+          alert('Error joining room: ' + memberError.message);
+          return;
+        }
+      }
+
+      console.log("Joining room:", roomCode);
+      // Use the exact room code that was verified
+      router.push(`/canvas?room=${roomCode}`);
+    } catch (error) {
+      console.error('Error joining room:', error);
+      alert('Unexpected error joining room');
     }
   };
 
-  const handleCreateRoom = () => {
-    const newRoomId = generateRoomId();
-    console.log("Creating new room:", newRoomId);
-    setRoomId(newRoomId);
+  const handleCreateRoom = async () => {
+    if (!user) {
+      alert('Please sign in to create a room');
+      router.push('/signin');
+      return;
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      alert('Your session has expired. Please sign in again.');
+      router.push('/signin');
+      return;
+    }
+
     setIsCreatingRoom(true);
-    setTimeout(() => {
-      // router.push(`/canvas/${newRoomId}`);
-      alert(`Created new room: ${newRoomId}`);
-    }, 500);
+    
+    try {
+      const newRoomId = generateRoomId();
+      
+      console.log('Creating room with ID:', newRoomId, 'for user:', user.id);
+      
+      // Create room in database
+      const { data: room, error } = await supabase
+        .from('rooms')
+        .insert({
+          name: `Room ${newRoomId}`,
+          code: newRoomId,
+          creator_id: user.id
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Full error object:', error);
+        console.error('Error details:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        });
+        
+        if (error.code === '42P17') {
+          alert('Database policy error (infinite recursion). Please check RLS policies.');
+        } else if (error.code === '42501') {
+          alert('Permission denied. RLS policies are blocking room creation.');
+        } else if (error.code === '23505') {
+          const retryId = generateRoomId();
+          setRoomId(retryId);
+          alert('Room ID already exists. Try again with the new generated ID.');
+          return;
+        } else if (error.code === 'PGRST116') {
+          alert('No data returned after room creation. Check if RLS policies allow SELECT after INSERT.');
+        } else {
+          alert(`Error creating room: ${error.message || 'Unknown error'}`);
+        }
+        return;
+      }
+
+      if (!room) {
+        alert('Room was created but no data returned. This might be an RLS policy issue.');
+        return;
+      }
+
+      console.log('Room created successfully:', room);
+
+      // Verify the room code matches what we intended to create
+      if (room.code !== newRoomId) {
+        console.warn('Room code mismatch! Expected:', newRoomId, 'Got:', room.code);
+        // Use the actual code from the database
+        setCreatedRoomId(room.code);
+        setRoomId(room.code);
+      } else {
+        setCreatedRoomId(newRoomId);
+        setRoomId(newRoomId);
+      }
+
+      // Add creator as room member
+      const { error: memberError } = await supabase
+        .from('room_members')
+        .insert({
+          room_id: room.id,
+          user_id: user.id
+        });
+
+      if (memberError) {
+        console.error('Error adding user to room:', memberError);
+        if (memberError.code !== '23505') {
+          alert('Warning: Could not add you as room member, but room was created.');
+        }
+      }
+
+      // Initialize canvas state
+      const { error: canvasError } = await supabase
+        .from('canvas_state')
+        .insert({
+          room_id: room.id,
+          state: { strokes: [] }
+        });
+
+      if (canvasError) {
+        console.error('Error initializing canvas:', canvasError);
+        alert('Warning: Could not initialize canvas, but room was created.');
+      }
+
+      console.log("Created new room. Database code:", room.code, "Our code:", newRoomId);
+      
+      // Use the actual room code from the database for redirection
+      const roomCodeToUse = room.code || newRoomId;
+      
+      // Redirect to canvas with the verified room code
+      setTimeout(() => {
+        router.push(`/canvas?room=${roomCodeToUse}`);
+      }, 500);
+    } catch (error) {
+      console.error('Unexpected error creating room:', error);
+      console.error('Error type:', typeof error);
+      console.error('Error string:', String(error));
+      
+      alert('Unexpected error creating room. Check console for details.');
+    } finally {
+      setIsCreatingRoom(false);
+    }
   };
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Error signing out:', error);
+      }
+      setUser(null);
+      router.push('/');
+    } catch (error) {
+      console.error('Unexpected error signing out:', error);
+    }
+  };
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="bg-black min-h-screen flex items-center justify-center">
+        <div className="text-white text-lg">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-black min-h-screen relative overflow-hidden">
@@ -71,6 +319,29 @@ export default function JoinRoom() {
         }}
       ></div>
 
+      {/* Display created room ID at the top */}
+      {createdRoomId && (
+        <div className="relative z-50 bg-blue-900/50 border border-blue-700/50 backdrop-blur-sm py-3 px-8">
+          <div className="max-w-6xl mx-auto flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-white font-medium">Room Created: <span className="text-blue-300">{createdRoomId}</span></span>
+            </div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(createdRoomId);
+                alert('Room ID copied to clipboard!');
+              }}
+              className="px-4 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+            >
+              Copy Room ID
+            </button>
+          </div>
+        </div>
+      )}
+
       <nav className="relative z-50 flex justify-between items-center p-8">
         <Link href="/" className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
           <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
@@ -79,12 +350,24 @@ export default function JoinRoom() {
           <span className="text-white font-light text-lg tracking-wide">DRW</span>
         </Link>
         
-        <Link 
-          href="/signin"
-          className="px-6 py-2 bg-white text-black text-sm font-medium rounded-lg hover:bg-zinc-100 transition-all duration-200 uppercase tracking-wide"
-        >
-          Sign In
-        </Link>
+        {user ? (
+          <div className="flex items-center space-x-4">
+            <span className="text-white text-sm">Welcome, {user.email}</span>
+            <button
+              onClick={handleSignOut}
+              className="px-6 py-2 bg-zinc-800 text-white text-sm font-medium rounded-lg hover:bg-zinc-700 transition-all duration-200 uppercase tracking-wide"
+            >
+              Sign Out
+            </button>
+          </div>
+        ) : (
+          <Link 
+            href="/signin"
+            className="px-6 py-2 bg-white text-black text-sm font-medium rounded-lg hover:bg-zinc-100 transition-all duration-200 uppercase tracking-wide"
+          >
+            Sign In
+          </Link>
+        )}
       </nav>
 
       <main className="relative z-10 px-8 py-20">
@@ -97,7 +380,7 @@ export default function JoinRoom() {
               </span>
             </h1>
             <p className="text-xl text-zinc-400 font-light max-w-xl mx-auto">
-              Enter a room ID to join an existing session or create a new one
+              {user ? 'Enter a room ID or create a new drawing session' : 'Sign in to join or create a drawing room'}
             </p>
           </div>
 
@@ -114,10 +397,10 @@ export default function JoinRoom() {
               </p>
               <button
                 onClick={handleCreateRoom}
-                disabled={isCreatingRoom}
+                disabled={isCreatingRoom || !user}
                 className="w-full px-6 py-3 bg-blue-500 text-white font-medium rounded-lg hover:bg-blue-600 transition-all duration-200 text-sm uppercase tracking-wide disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isCreatingRoom ? 'Creating...' : 'Create Room'}
+                {!user ? 'Sign In Required' : isCreatingRoom ? 'Creating...' : 'Create Room'}
               </button>
             </div>
 
@@ -149,17 +432,19 @@ export default function JoinRoom() {
                   placeholder="ABCD1234"
                   maxLength={8}
                   required
+                  disabled={!user}
                 />
                 <p className="text-xs text-zinc-500 mt-2 font-light text-center">
-                  Enter the 8-character room code
+                  {!user ? 'Please sign in to join a room' : 'Enter the 8-character room code'}
                 </p>
               </div>
 
               <button
                 type="submit"
-                className="w-full px-8 py-4 bg-white text-black font-medium rounded-lg hover:bg-zinc-100 transform hover:scale-[1.02] transition-all duration-200 text-sm uppercase tracking-wide shadow-2xl"
+                disabled={!user}
+                className="w-full px-8 py-4 bg-white text-black font-medium rounded-lg hover:bg-zinc-100 transform hover:scale-[1.02] transition-all duration-200 text-sm uppercase tracking-wide shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Join Room
+                {!user ? 'Sign In Required' : 'Join Room'}
               </button>
 
               <div className="relative my-6">
@@ -178,7 +463,8 @@ export default function JoinRoom() {
                     const randomId = generateRoomId();
                     setRoomId(randomId);
                   }}
-                  className="px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white font-light hover:bg-zinc-800 transition-all duration-200 text-sm"
+                  disabled={!user}
+                  className="px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white font-light hover:bg-zinc-800 transition-all duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Generate ID
                 </button>
@@ -190,7 +476,7 @@ export default function JoinRoom() {
                       alert('Room ID copied to clipboard!');
                     }
                   }}
-                  disabled={!roomId}
+                  disabled={!roomId || !user}
                   className="px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white font-light hover:bg-zinc-800 transition-all duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Copy ID
@@ -198,6 +484,21 @@ export default function JoinRoom() {
               </div>
             </form>
           </div>
+
+          {!user && (
+            <div className="mt-8 bg-amber-900/20 backdrop-blur-sm rounded-2xl border border-amber-800/30 p-6">
+              <h3 className="text-lg font-light text-amber-300 mb-4 flex items-center">
+                <svg className="w-5 h-5 text-amber-400 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                Authentication Required
+              </h3>
+              <div className="space-y-3 text-sm text-amber-200 font-light">
+                <p>You need to sign in to create or join drawing rooms.</p>
+                <p>This ensures your drawings are saved and synced across all devices.</p>
+              </div>
+            </div>
+          )}
 
           <div className="mt-12 bg-zinc-900/30 backdrop-blur-sm rounded-2xl border border-zinc-800/30 p-6">
             <h3 className="text-lg font-light text-white mb-4 flex items-center">
@@ -207,10 +508,11 @@ export default function JoinRoom() {
               How it works
             </h3>
             <div className="space-y-3 text-sm text-zinc-400 font-light">
-              <p>1. Create a new room or enter an existing room ID</p>
-              <p>2. Share the room ID with your team members</p>
-              <p>3. Start drawing together in real-time</p>
-              <p>4. All changes sync instantly across all devices</p>
+              <p>1. Sign in to your account</p>
+              <p>2. Create a new room or enter an existing room ID</p>
+              <p>3. Share the room ID with your team members</p>
+              <p>4. Start drawing together in real-time</p>
+              <p>5. All changes sync instantly across all devices</p>
             </div>
           </div>
         </div>

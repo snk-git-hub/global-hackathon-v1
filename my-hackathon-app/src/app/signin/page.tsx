@@ -1,7 +1,7 @@
 "use client"
 import Link from 'next/link'
 import { useState, useEffect } from "react";
-import { supabase } from '../../lib/supabase'; // Fixed import path
+import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 
 export default function SignIn() {
@@ -18,8 +18,29 @@ export default function SignIn() {
     };
 
     window.addEventListener('mousemove', handleMouseMove);
+    
+    // Check if user is already logged in
+    checkExistingAuth();
+    
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
+
+  const checkExistingAuth = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      // User is already logged in, redirect to join room
+      router.push('/join');
+    }
+  };
+
+  const saveCredentialsToLocalStorage = (email: string) => {
+    try {
+      localStorage.setItem('userEmail', email);
+      localStorage.setItem('lastLogin', new Date().toISOString());
+    } catch (error) {
+      console.error('Error saving to localStorage:', error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,8 +60,12 @@ export default function SignIn() {
 
       if (data.user) {
         console.log("Sign in successful:", data.user);
-        // Redirect to dashboard or home page
-        router.push('/dashboard');
+        
+        // Save credentials to localStorage
+        saveCredentialsToLocalStorage(email);
+        
+        // Redirect to join room page instead of dashboard
+        router.push('/join');
       }
     } catch (err) {
       setError("An unexpected error occurred");

@@ -91,13 +91,18 @@ function CanvasPage() {
   // Load existing strokes
   const loadStrokes = useCallback(async () => {
     if (!roomId) return;
+    console.log('Loading strokes for room:', roomId);
     const { data, error } = await supabase
       .from("strokes")
       .select("*")
       .eq("room_id", roomId)
       .order("sequence", { ascending: true });
-    if (error) console.error(error);
+    if (error) {
+      console.error('Error loading strokes:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+    }
     if (data) {
+      console.log('Loaded strokes:', data.length);
       setHistory(data);
       sequenceRef.current = Math.max(0, ...data.map(s => s.sequence || 0));
       redrawCanvas(data);
@@ -111,6 +116,7 @@ function CanvasPage() {
 
     if (channelRef.current) supabase.removeChannel(channelRef.current);
 
+    console.log('Setting up realtime for room:', roomId);
     channelRef.current = supabase
       .channel(`room:${roomId}`)
       .on(
@@ -122,6 +128,7 @@ function CanvasPage() {
           filter: `room_id=eq.${roomId}`,
         },
         (payload: any) => {
+          console.log('Received realtime update:', payload);
           if (payload.new.user_id !== userId) {
             setHistory(prev => {
               const exists = prev.some(s => s.id === payload.new.id);
@@ -135,7 +142,9 @@ function CanvasPage() {
           }
         }
       )
-      .subscribe(status => {
+      .subscribe((status, err) => {
+        console.log('Realtime subscription status:', status);
+        if (err) console.error('Realtime subscription error:', err);
         setIsConnected(status === 'SUBSCRIBED');
       });
     

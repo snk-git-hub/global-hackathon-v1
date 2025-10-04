@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
@@ -22,7 +22,7 @@ interface DrawAction {
   text?: string;
 }
 
-export default function CanvasPage() {
+function CanvasPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -549,5 +549,12 @@ export default function CanvasPage() {
         </div>
       </div>
     </div>
+  );
+}
+export default function CanvasPageWrapper() {
+  return (
+    <Suspense fallback={<div className="bg-zinc-900 min-h-screen flex items-center justify-center text-white">Loading...</div>}>
+      <CanvasPage />
+    </Suspense>
   );
 }

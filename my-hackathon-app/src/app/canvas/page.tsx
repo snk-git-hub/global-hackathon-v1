@@ -1,13 +1,5 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
-
-// Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 interface Point { x: number; y: number; }
 interface DrawAction {
@@ -23,19 +15,15 @@ interface DrawAction {
 }
 
 function CanvasPage() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [history, setHistory] = useState<DrawAction[]>([]);
   const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState("#3b82f6");
   const [lineWidth, setLineWidth] = useState(3);
-  const [roomId, setRoomId] = useState("");
+  const [roomId] = useState("DEMO-ROOM");
   const [userId] = useState(() => `user_${Math.random().toString(36).substr(2, 9)}`);
-  const [isConnected, setIsConnected] = useState(false);
   const sequenceRef = useRef(0);
-  const channelRef = useRef<any>(null);
   
   // AI Selection tool state
   const [tool, setTool] = useState<'draw' | 'select'>('draw');
@@ -45,20 +33,13 @@ function CanvasPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiResponse, setAiResponse] = useState<{text: string, pos: Point} | null>(null);
 
-  // Get room ID
-  useEffect(() => {
-    const room = searchParams.get("room");
-    if (room) setRoomId(room.toUpperCase());
-    else router.push("/join");
-  }, [searchParams, router]);
-
   // Redraw canvas function
   const redrawCanvas = useCallback((actions: DrawAction[]) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.fillStyle = "#000000";
+    ctx.fillStyle = "#2a2a2a";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     actions.forEach(stroke => {
@@ -88,71 +69,6 @@ function CanvasPage() {
     }
   }, [aiResponse]);
 
-  // Load existing strokes
-  const loadStrokes = useCallback(async () => {
-    if (!roomId) return;
-    console.log('Loading strokes for room:', roomId);
-    const { data, error } = await supabase
-      .from("strokes")
-      .select("*")
-      .eq("room_id", roomId)
-      .order("sequence", { ascending: true });
-    if (error) {
-      console.error('Error loading strokes:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
-    }
-    if (data) {
-      console.log('Loaded strokes:', data.length);
-      setHistory(data);
-      sequenceRef.current = Math.max(0, ...data.map(s => s.sequence || 0));
-      redrawCanvas(data);
-    }
-  }, [roomId, redrawCanvas]);
-
-  // Realtime subscription
-  useEffect(() => {
-    if (!roomId) return;
-    loadStrokes();
-
-    if (channelRef.current) supabase.removeChannel(channelRef.current);
-
-    console.log('Setting up realtime for room:', roomId);
-    channelRef.current = supabase
-      .channel(`room:${roomId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'strokes',
-          filter: `room_id=eq.${roomId}`,
-        },
-        (payload: any) => {
-          console.log('Received realtime update:', payload);
-          if (payload.new.user_id !== userId) {
-            setHistory(prev => {
-              const exists = prev.some(s => s.id === payload.new.id);
-              if (!exists) {
-                const updated = [...prev, payload.new].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
-                setTimeout(() => redrawCanvas(updated), 0);
-                return updated;
-              }
-              return prev;
-            });
-          }
-        }
-      )
-      .subscribe((status, err) => {
-        console.log('Realtime subscription status:', status);
-        if (err) console.error('Realtime subscription error:', err);
-        setIsConnected(status === 'SUBSCRIBED');
-      });
-    
-    return () => {
-      if (channelRef.current) supabase.removeChannel(channelRef.current);
-    };
-  }, [roomId, userId, loadStrokes, redrawCanvas]);
-
   // Canvas setup
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -164,7 +80,7 @@ function CanvasPage() {
       const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
       canvas.width = canvas.offsetWidth;
       canvas.height = canvas.offsetHeight;
-      ctx.fillStyle = "#000000";
+      ctx.fillStyle = "#2a2a2a";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       if (data.width > 1 && data.height > 1) ctx.putImageData(data, 0, 0);
       redrawCanvas(history);
@@ -281,43 +197,19 @@ function CanvasPage() {
         return;
       }
 
-      // Create temporary canvas for selected area
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = w;
-      tempCanvas.height = h;
-      const tempCtx = tempCanvas.getContext('2d');
-      if (!tempCtx) return;
-
-      // Copy selected area
-      tempCtx.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+      // Simulate AI processing
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Convert to base64
-      const imageData = tempCanvas.toDataURL('image/png');
-
-      // Send to Next.js API route
-      const response = await fetch('/api/process-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageData, prompt: "" })
-      });
-
-      const result = await response.json();
+      const rightX = Math.max(selectionStart.x, selectionEnd.x);
+      const centerY = (selectionStart.y + selectionEnd.y) / 2;
       
-      if (result.response) {
-        // Find the rightmost point in the selection (where = sign likely is)
-        const rightX = Math.max(selectionStart.x, selectionEnd.x);
-        const centerY = (selectionStart.y + selectionEnd.y) / 2;
-        
-        // Position answer right after the selection (after the = sign)
-        const responsePos = { x: rightX + 10, y: centerY };
-        setAiResponse({ text: result.response, pos: responsePos });
-        
-        // Animate the response
-        animateTextResponse(result.response, responsePos);
-      }
+      const responsePos = { x: rightX + 20, y: centerY };
+      const mockResponse = "42";
+      setAiResponse({ text: mockResponse, pos: responsePos });
+      
+      animateTextResponse(mockResponse, responsePos);
     } catch (error) {
       console.error('Error processing selection:', error);
-      alert('Failed to process image. Make sure the API route is set up correctly.');
     } finally {
       setIsProcessing(false);
       setIsSelecting(false);
@@ -333,13 +225,11 @@ function CanvasPage() {
 
     let charIndex = 0;
     const lines = text.split('\n');
-    let totalDisplayed = '';
     
     const animate = () => {
       if (charIndex <= text.length) {
         redrawCanvas(history);
         
-        // Handwriting style with glow effect
         ctx.font = '28px "Caveat", cursive';
         ctx.fillStyle = "#10b981";
         ctx.shadowColor = "#10b981";
@@ -359,16 +249,13 @@ function CanvasPage() {
         
         lines.forEach((line, i) => {
           if (i < currentLine) {
-            // Add slight wave effect to completed lines
             const waveOffset = Math.sin(Date.now() / 500 + i) * 0.5;
             ctx.fillText(line, startPos.x, startPos.y + i * 35 + waveOffset);
           } else if (i === currentLine) {
             const displayText = line.substring(0, charsInLine);
-            // Add writing cursor effect
             const waveOffset = Math.sin(Date.now() / 500 + i) * 0.5;
             ctx.fillText(displayText, startPos.x, startPos.y + i * 35 + waveOffset);
             
-            // Add a glowing cursor dot at the end
             if (charIndex < text.length && text[charIndex] !== '\n') {
               const textWidth = ctx.measureText(displayText).width;
               ctx.beginPath();
@@ -389,7 +276,6 @@ function CanvasPage() {
         ctx.shadowBlur = 0;
         charIndex++;
         
-        // Variable speed for more natural writing
         const delay = text[charIndex - 1] === ' ' ? 20 : 40;
         setTimeout(animate, delay);
       }
@@ -424,127 +310,123 @@ function CanvasPage() {
     setIsDrawing(false);
     setCurrentStroke([]);
     setHistory(prev => [...prev, newStroke]);
-
-    try {
-      const { data, error } = await supabase
-        .from("strokes")
-        .insert([newStroke])
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Supabase insert error:", JSON.stringify(error, null, 2));
-        setHistory(prev => prev.filter(s => s !== newStroke));
-        redrawCanvas(history);
-        return;
-      }
-
-      if (data) {
-        setHistory(prev => prev.map(s => (s === newStroke ? { ...s, id: data.id } : s)));
-      }
-    } catch (err) {
-      console.error("Failed to save stroke:", err);
-      setHistory(prev => prev.filter(s => s !== newStroke));
-      redrawCanvas(history);
-    }
   };
 
-  const undo = async () => {
+  const undo = () => {
     const userStrokes = history.filter(s => s.user_id === userId);
     const last = userStrokes[userStrokes.length - 1];
-    if (!last?.id) return;
+    if (!last) return;
 
-    const { error } = await supabase.from("strokes").delete().eq("id", last.id);
-    if (!error) {
-      const updated = history.filter(s => s.id !== last.id);
-      setHistory(updated);
-      redrawCanvas(updated);
-    }
+    const updated = history.filter(s => s !== last);
+    setHistory(updated);
+    redrawCanvas(updated);
   };
 
-  const clearCanvas = async () => {
-    setAiResponse(null); // Clear AI response
-    await supabase.from("strokes").delete().eq("room_id", roomId);
+  const clearCanvas = () => {
+    setAiResponse(null);
     setHistory([]);
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (ctx && canvas) {
-      ctx.fillStyle = "#000000";
+      ctx.fillStyle = "#2a2a2a";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     sequenceRef.current = 0;
   };
 
-  const colors = ["#3b82f6", "#ef4444", "#10b981", "#eab308", "#8b5cf6", "#ffffff"];
-
   return (
     <div className="bg-zinc-900 min-h-screen flex flex-col">
       <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Indie+Flower&family=Kalam:wght@300;400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap');
       `}</style>
-      <nav className="bg-zinc-800 border-b border-zinc-700 p-4 flex justify-between items-center">
-        <span className="text-white font-light">Room: {roomId}</span>
+      <nav className="bg-[#2a2a2a] px-6 py-3 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-red-500" />
+            <div className="w-3 h-3 rounded-full bg-yellow-500" />
+            <div className="w-3 h-3 rounded-full bg-green-500" />
+          </div>
+          <span className="text-gray-400 text-sm ml-4">DRW.app/canvas/team-brainstorm</span>
+        </div>
         <div className="flex items-center gap-3">
           {isProcessing && (
             <div className="flex items-center gap-2 text-blue-400">
               <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm">AI Processing...</span>
+              <span className="text-xs">AI Processing...</span>
             </div>
           )}
-          <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"} animate-pulse`} />
+          <div className="flex gap-2">
+            <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-semibold border-2 border-gray-700">A</div>
+            <div className="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center text-white text-sm font-semibold border-2 border-gray-700">B</div>
+            <div className="w-10 h-10 rounded-full bg-pink-500 flex items-center justify-center text-white text-sm font-semibold border-2 border-gray-700">C</div>
+            <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-white text-sm font-semibold border-2 border-gray-700">+2</div>
+          </div>
         </div>
       </nav>
       
       <div className="flex flex-1 overflow-hidden">
-        <div className="bg-zinc-800 p-4 w-20 flex flex-col items-center space-y-4">
+        <div className="bg-[#1a1a1a] p-4 w-20 flex flex-col items-center space-y-3">
           <button
             onClick={() => setTool('draw')}
-            className={`w-12 h-12 rounded-lg flex items-center justify-center text-2xl ${
-              tool === 'draw' ? 'bg-blue-500 text-white' : 'bg-zinc-700 text-gray-300'
-            }`}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              tool === 'draw' ? 'bg-white text-black' : 'bg-[#2a2a2a] text-white hover:bg-[#3a3a3a]'
+            } transition-colors`}
             title="Draw Tool"
           >
-            ✏️
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 19l7-7 3 3-7 7-3-3z" />
+              <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+              <path d="M2 2l7.586 7.586" />
+            </svg>
           </button>
           
           <button
-            onClick={() => setTool('select')}
-            className={`w-12 h-12 rounded-lg flex items-center justify-center text-2xl ${
-              tool === 'select' ? 'bg-blue-500 text-white' : 'bg-zinc-700 text-gray-300'
-            }`}
-            title="AI Select Tool"
+            onClick={() => setTool('draw')}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center bg-[#2a2a2a] text-white hover:bg-[#3a3a3a] transition-colors`}
+            title="Line Tool"
           >
-            ✨
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="5" y1="19" x2="19" y2="5" />
+            </svg>
           </button>
 
-          <div className="w-full h-px bg-zinc-700 my-2" />
+          <button
+            onClick={() => setTool('select')}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center bg-[#2a2a2a] text-white hover:bg-[#3a3a3a] transition-colors`}
+            title="Circle Tool"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="9" />
+            </svg>
+          </button>
+
+          <button
+            className={`w-12 h-12 rounded-xl flex items-center justify-center bg-[#2a2a2a] text-white hover:bg-[#3a3a3a] transition-colors`}
+            title="Text Tool"
+          >
+            <span className="text-lg font-semibold">T</span>
+          </button>
+
+          <div className="w-full h-px bg-[#3a3a3a] my-1" />
           
-          {colors.map(c => (
-            <button
-              key={c}
-              style={{ backgroundColor: c }}
-              className={`w-12 h-12 rounded-lg ${color === c ? "border-white border-2" : ""}`}
-              onClick={() => setColor(c)}
-            />
-          ))}
-          
-          <input 
-            type="range" 
-            min={1} 
-            max={20} 
-            value={lineWidth} 
-            onChange={e => setLineWidth(Number(e.target.value))}
-            className="w-12"
-          />
-          
-          <button onClick={undo} className="w-12 h-12 bg-zinc-700 text-white rounded-lg text-xs">Undo</button>
-          <button onClick={clearCanvas} className="w-12 h-12 bg-red-500 text-white rounded-lg text-xs">Clear</button>
+          <button onClick={undo} className="w-12 h-12 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white rounded-xl flex items-center justify-center transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 7v6h6" />
+              <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" />
+            </svg>
+          </button>
+          <button onClick={clearCanvas} className="w-12 h-12 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white rounded-xl flex items-center justify-center transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6h18" />
+              <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+            </svg>
+          </button>
         </div>
         
-        <div className="flex-1 p-4">
+        <div className="flex-1 bg-[#1a1a1a]">
           <canvas
             ref={canvasRef}
-            className={`w-full h-full bg-black rounded-lg ${
+            className={`w-full h-full ${
               tool === 'select' ? 'cursor-crosshair' : 'cursor-crosshair'
             }`}
             onMouseDown={startDrawing}

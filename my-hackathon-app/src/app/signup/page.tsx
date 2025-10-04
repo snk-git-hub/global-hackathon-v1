@@ -1,6 +1,8 @@
 "use client"
 import Link from 'next/link'
 import { useState, useEffect } from "react";
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
 
 export default function SignUp() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -10,6 +12,10 @@ export default function SignUp() {
     password: "",
     confirmPassword: ""
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const router = useRouter();
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -27,13 +33,72 @@ export default function SignUp() {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords don't match!");
+      setError("Passwords don't match!");
       return;
     }
-    console.log("Sign up attempt:", formData);
+
+    if (formData.password.length < 8) {
+      setError("Password must be at least 8 characters long");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email.trim(),
+        password: formData.password,
+        options: {
+          data: {
+            name: formData.name,
+          },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      if (data.user) {
+        setMessage("Check your email for verification link! You'll be redirected shortly...");
+        
+        // Optional: Auto redirect after delay
+        setTimeout(() => {
+          router.push('/');
+        }, 3000);
+      }
+    } catch (err) {
+      setError("An unexpected error occurred");
+      console.error("Sign up error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        setError(error.message);
+      }
+    } catch (err) {
+      setError("Failed to sign up with Google");
+      console.error("Google sign up error:", err);
+    }
   };
 
   return (
@@ -81,6 +146,20 @@ export default function SignUp() {
           </div>
 
           <div className="bg-zinc-900/50 backdrop-blur-xl rounded-3xl border border-zinc-800/50 p-8">
+            {/* Error Message */}
+            {error && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                <p className="text-red-400 text-sm text-center">{error}</p>
+              </div>
+            )}
+
+            {/* Success Message */}
+            {message && (
+              <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <p className="text-green-400 text-sm text-center">{message}</p>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label htmlFor="name" className="block text-sm font-light text-zinc-300 mb-2">
@@ -95,6 +174,7 @@ export default function SignUp() {
                   className="w-full px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
                   placeholder="John Doe"
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -111,6 +191,7 @@ export default function SignUp() {
                   className="w-full px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
                   placeholder="you@example.com"
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -128,6 +209,7 @@ export default function SignUp() {
                   placeholder="••••••••"
                   required
                   minLength={8}
+                  disabled={loading}
                 />
                 <p className="text-xs text-zinc-500 mt-1 font-light">Must be at least 8 characters</p>
               </div>
@@ -145,6 +227,7 @@ export default function SignUp() {
                   className="w-full px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
                   placeholder="••••••••"
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -154,6 +237,7 @@ export default function SignUp() {
                   id="terms"
                   className="w-4 h-4 mt-1 rounded bg-zinc-800 border-zinc-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
                   required
+                  disabled={loading}
                 />
                 <label htmlFor="terms" className="text-sm text-zinc-400 font-light">
                   I agree to the{' '}
@@ -169,9 +253,10 @@ export default function SignUp() {
 
               <button
                 type="submit"
-                className="w-full px-6 py-3 bg-white text-black font-medium rounded-lg hover:bg-zinc-100 transform hover:scale-[1.02] transition-all duration-200 text-sm uppercase tracking-wide shadow-2xl"
+                disabled={loading}
+                className="w-full px-6 py-3 bg-white text-black font-medium rounded-lg hover:bg-zinc-100 transform hover:scale-[1.02] transition-all duration-200 text-sm uppercase tracking-wide shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
-                Create Account
+                {loading ? "Creating Account..." : "Create Account"}
               </button>
 
               <div className="relative my-6">
@@ -183,7 +268,21 @@ export default function SignUp() {
                 </div>
               </div>
 
-          
+              {/* Google Sign Up Button */}
+              <button
+                type="button"
+                onClick={handleGoogleSignUp}
+                disabled={loading}
+                className="w-full px-6 py-3 bg-zinc-800/50 border border-zinc-700 text-white font-medium rounded-lg hover:bg-zinc-700/50 transform hover:scale-[1.02] transition-all duration-200 text-sm flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                <span>Continue with Google</span>
+              </button>
             </form>
 
             <div className="mt-8 text-center">

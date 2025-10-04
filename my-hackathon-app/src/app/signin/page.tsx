@@ -1,7 +1,7 @@
 "use client"
 import Link from 'next/link'
 import { useState, useEffect } from "react";
-import { supabase } from '@/lib/supabase'; // Make sure to create this file
+import { supabase } from '../../lib/supabase'; // Fixed import path
 import { useRouter } from 'next/navigation';
 
 export default function SignIn() {

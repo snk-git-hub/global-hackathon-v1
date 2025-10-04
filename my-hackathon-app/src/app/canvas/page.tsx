@@ -58,7 +58,7 @@ function CanvasPage() {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.fillStyle = "#000000";
+    ctx.fillStyle = "#0a0a0a";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     actions.forEach(stroke => {
@@ -74,7 +74,7 @@ function CanvasPage() {
       }
     });
 
-    // Draw AI response if exists (temporary, not saved)
+    // Draw AI response if exists
     if (aiResponse) {
       ctx.font = '28px "Caveat", cursive';
       ctx.fillStyle = "#10b981";
@@ -91,18 +91,13 @@ function CanvasPage() {
   // Load existing strokes
   const loadStrokes = useCallback(async () => {
     if (!roomId) return;
-    console.log('Loading strokes for room:', roomId);
     const { data, error } = await supabase
       .from("strokes")
       .select("*")
       .eq("room_id", roomId)
       .order("sequence", { ascending: true });
-    if (error) {
-      console.error('Error loading strokes:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
-    }
+    if (error) console.error('Error loading strokes:', error);
     if (data) {
-      console.log('Loaded strokes:', data.length);
       setHistory(data);
       sequenceRef.current = Math.max(0, ...data.map(s => s.sequence || 0));
       redrawCanvas(data);
@@ -116,7 +111,6 @@ function CanvasPage() {
 
     if (channelRef.current) supabase.removeChannel(channelRef.current);
 
-    console.log('Setting up realtime for room:', roomId);
     channelRef.current = supabase
       .channel(`room:${roomId}`)
       .on(
@@ -128,7 +122,6 @@ function CanvasPage() {
           filter: `room_id=eq.${roomId}`,
         },
         (payload: any) => {
-          console.log('Received realtime update:', payload);
           if (payload.new.user_id !== userId) {
             setHistory(prev => {
               const exists = prev.some(s => s.id === payload.new.id);
@@ -142,9 +135,7 @@ function CanvasPage() {
           }
         }
       )
-      .subscribe((status, err) => {
-        console.log('Realtime subscription status:', status);
-        if (err) console.error('Realtime subscription error:', err);
+      .subscribe((status) => {
         setIsConnected(status === 'SUBSCRIBED');
       });
     
@@ -164,7 +155,7 @@ function CanvasPage() {
       const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
       canvas.width = canvas.offsetWidth;
       canvas.height = canvas.offsetHeight;
-      ctx.fillStyle = "#000000";
+      ctx.fillStyle = "#0a0a0a";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       if (data.width > 1 && data.height > 1) ctx.putImageData(data, 0, 0);
       redrawCanvas(history);
@@ -187,12 +178,10 @@ function CanvasPage() {
     e.preventDefault();
     const pos = getPointer(e);
 
-    // Clear AI response when starting any new action
     if (aiResponse) {
       setAiResponse(null);
     }
 
-    // Selection mode
     if (tool === 'select') {
       setIsSelecting(true);
       setSelectionStart(pos);
@@ -200,7 +189,6 @@ function CanvasPage() {
       return;
     }
 
-    // Draw mode
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!ctx) return;
@@ -219,7 +207,6 @@ function CanvasPage() {
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     
-    // Selection mode - draw rectangle
     if (tool === 'select' && isSelecting && selectionStart) {
       const pos = getPointer(e);
       setSelectionEnd(pos);
@@ -242,7 +229,6 @@ function CanvasPage() {
       return;
     }
 
-    // Draw mode
     if (!isDrawing) return;
     
     const pos = getPointer(e);
@@ -266,7 +252,6 @@ function CanvasPage() {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      // Get selection bounds
       const x = Math.min(selectionStart.x, selectionEnd.x);
       const y = Math.min(selectionStart.y, selectionEnd.y);
       const w = Math.abs(selectionEnd.x - selectionStart.x);
@@ -281,20 +266,15 @@ function CanvasPage() {
         return;
       }
 
-      // Create temporary canvas for selected area
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = w;
       tempCanvas.height = h;
       const tempCtx = tempCanvas.getContext('2d');
       if (!tempCtx) return;
 
-      // Copy selected area
       tempCtx.drawImage(canvas, x, y, w, h, 0, 0, w, h);
-      
-      // Convert to base64
       const imageData = tempCanvas.toDataURL('image/png');
 
-      // Send to Next.js API route
       const response = await fetch('/api/process-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -304,15 +284,10 @@ function CanvasPage() {
       const result = await response.json();
       
       if (result.response) {
-        // Find the rightmost point in the selection (where = sign likely is)
         const rightX = Math.max(selectionStart.x, selectionEnd.x);
         const centerY = (selectionStart.y + selectionEnd.y) / 2;
-        
-        // Position answer right after the selection (after the = sign)
         const responsePos = { x: rightX + 10, y: centerY };
         setAiResponse({ text: result.response, pos: responsePos });
-        
-        // Animate the response
         animateTextResponse(result.response, responsePos);
       }
     } catch (error) {
@@ -333,13 +308,11 @@ function CanvasPage() {
 
     let charIndex = 0;
     const lines = text.split('\n');
-    let totalDisplayed = '';
     
     const animate = () => {
       if (charIndex <= text.length) {
         redrawCanvas(history);
         
-        // Handwriting style with glow effect
         ctx.font = '28px "Caveat", cursive';
         ctx.fillStyle = "#10b981";
         ctx.shadowColor = "#10b981";
@@ -359,16 +332,13 @@ function CanvasPage() {
         
         lines.forEach((line, i) => {
           if (i < currentLine) {
-            // Add slight wave effect to completed lines
             const waveOffset = Math.sin(Date.now() / 500 + i) * 0.5;
             ctx.fillText(line, startPos.x, startPos.y + i * 35 + waveOffset);
           } else if (i === currentLine) {
             const displayText = line.substring(0, charsInLine);
-            // Add writing cursor effect
             const waveOffset = Math.sin(Date.now() / 500 + i) * 0.5;
             ctx.fillText(displayText, startPos.x, startPos.y + i * 35 + waveOffset);
             
-            // Add a glowing cursor dot at the end
             if (charIndex < text.length && text[charIndex] !== '\n') {
               const textWidth = ctx.measureText(displayText).width;
               ctx.beginPath();
@@ -389,7 +359,6 @@ function CanvasPage() {
         ctx.shadowBlur = 0;
         charIndex++;
         
-        // Variable speed for more natural writing
         const delay = text[charIndex - 1] === ' ' ? 20 : 40;
         setTimeout(animate, delay);
       }
@@ -399,13 +368,11 @@ function CanvasPage() {
   };
 
   const stopDrawing = async () => {
-    // Handle selection mode
     if (tool === 'select' && isSelecting) {
       await processSelection();
       return;
     }
 
-    // Handle draw mode
     if (!isDrawing || currentStroke.length < 2) {
       setIsDrawing(false);
       setCurrentStroke([]);
@@ -463,88 +430,162 @@ function CanvasPage() {
   };
 
   const clearCanvas = async () => {
-    setAiResponse(null); // Clear AI response
+    setAiResponse(null);
     await supabase.from("strokes").delete().eq("room_id", roomId);
     setHistory([]);
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (ctx && canvas) {
-      ctx.fillStyle = "#000000";
+      ctx.fillStyle = "#0a0a0a";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     sequenceRef.current = 0;
   };
 
-  const colors = ["#3b82f6", "#ef4444", "#10b981", "#eab308", "#8b5cf6", "#ffffff"];
+  const colors = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#ffffff"];
 
   return (
-    <div className="bg-zinc-900 min-h-screen flex flex-col">
+    <div className="bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 min-h-screen flex flex-col">
       <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Indie+Flower&family=Kalam:wght@300;400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap');
       `}</style>
-      <nav className="bg-zinc-800 border-b border-zinc-700 p-4 flex justify-between items-center">
-        <span className="text-white font-light">Room: {roomId}</span>
-        <div className="flex items-center gap-3">
-          {isProcessing && (
-            <div className="flex items-center gap-2 text-blue-400">
-              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm">AI Processing...</span>
+      
+      {/* Enhanced Header */}
+      <nav className="bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800/50 px-6 py-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                <span className="text-white font-bold text-lg">✏️</span>
+              </div>
+              <div>
+                <h1 className="text-white font-semibold text-lg">Draw & Solve</h1>
+                <p className="text-zinc-400 text-xs">Collaborative AI Canvas</p>
+              </div>
             </div>
-          )}
-          <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"} animate-pulse`} />
+          </div>
+          
+          <div className="flex items-center gap-6">
+            {isProcessing && (
+              <div className="flex items-center gap-2 bg-blue-500/10 px-4 py-2 rounded-full border border-blue-500/20">
+                <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm text-blue-400 font-medium">AI Processing...</span>
+              </div>
+            )}
+            
+            <div className="flex items-center gap-3 bg-zinc-800/50 px-4 py-2 rounded-full border border-zinc-700/50">
+              <span className="text-zinc-400 text-sm font-medium">Room:</span>
+              <span className="text-white font-mono font-semibold tracking-wider">{roomId}</span>
+              <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"} shadow-lg ${isConnected ? 'shadow-green-500/50' : 'shadow-red-500/50'}`} />
+            </div>
+          </div>
         </div>
       </nav>
       
-      <div className="flex flex-1 overflow-hidden">
-        <div className="bg-zinc-800 p-4 w-20 flex flex-col items-center space-y-4">
-          <button
-            onClick={() => setTool('draw')}
-            className={`w-12 h-12 rounded-lg flex items-center justify-center text-2xl ${
-              tool === 'draw' ? 'bg-blue-500 text-white' : 'bg-zinc-700 text-gray-300'
-            }`}
-            title="Draw Tool"
-          >
-            ✏️
-          </button>
-          
-          <button
-            onClick={() => setTool('select')}
-            className={`w-12 h-12 rounded-lg flex items-center justify-center text-2xl ${
-              tool === 'select' ? 'bg-blue-500 text-white' : 'bg-zinc-700 text-gray-300'
-            }`}
-            title="AI Select Tool"
-          >
-            ✨
-          </button>
-
-          <div className="w-full h-px bg-zinc-700 my-2" />
-          
-          {colors.map(c => (
+      <div className="flex flex-1 overflow-hidden p-4 gap-4">
+        {/* Enhanced Sidebar */}
+        <div className="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800/50 rounded-2xl p-4 w-20 flex flex-col items-center gap-3 shadow-2xl">
+          {/* Tools Section */}
+          <div className="flex flex-col gap-2 w-full">
             <button
-              key={c}
-              style={{ backgroundColor: c }}
-              className={`w-12 h-12 rounded-lg ${color === c ? "border-white border-2" : ""}`}
-              onClick={() => setColor(c)}
+              onClick={() => setTool('draw')}
+              className={`w-full aspect-square rounded-xl flex items-center justify-center text-2xl transition-all duration-200 ${
+                tool === 'draw' 
+                  ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/50 scale-105' 
+                  : 'bg-zinc-800/50 text-gray-400 hover:bg-zinc-700/50 hover:scale-105'
+              }`}
+              title="Draw Tool"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
+            
+            <button
+              onClick={() => setTool('select')}
+              className={`w-full aspect-square rounded-xl flex items-center justify-center text-2xl transition-all duration-200 ${
+                tool === 'select' 
+                  ? 'bg-gradient-to-br from-purple-500 to-pink-600 text-white shadow-lg shadow-purple-500/50 scale-105' 
+                  : 'bg-zinc-800/50 text-gray-400 hover:bg-zinc-700/50 hover:scale-105'
+              }`}
+              title="AI Select Tool"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="w-full h-px bg-gradient-to-r from-transparent via-zinc-700 to-transparent my-1" />
+          
+          {/* Color Palette */}
+          <div className="flex flex-col gap-2 w-full">
+            {colors.map(c => (
+              <button
+                key={c}
+                style={{ backgroundColor: c }}
+                className={`w-full aspect-square rounded-xl transition-all duration-200 ${
+                  color === c 
+                    ? "ring-2 ring-white ring-offset-2 ring-offset-zinc-900 scale-110 shadow-lg" 
+                    : "hover:scale-105 opacity-80 hover:opacity-100"
+                }`}
+                onClick={() => setColor(c)}
+              />
+            ))}
+          </div>
+          
+          <div className="w-full h-px bg-gradient-to-r from-transparent via-zinc-700 to-transparent my-1" />
+          
+          {/* Brush Size */}
+          <div className="flex flex-col items-center gap-2 w-full py-2">
+            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
+              <div 
+                className="rounded-full bg-white transition-all duration-200" 
+                style={{ 
+                  width: `${Math.max(4, Math.min(20, lineWidth))}px`, 
+                  height: `${Math.max(4, Math.min(20, lineWidth))}px` 
+                }}
+              />
+            </div>
+            <input 
+              type="range" 
+              min={1} 
+              max={20} 
+              value={lineWidth} 
+              onChange={e => setLineWidth(Number(e.target.value))}
+              className="w-full h-1 bg-zinc-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-lg"
             />
-          ))}
+          </div>
           
-          <input 
-            type="range" 
-            min={1} 
-            max={20} 
-            value={lineWidth} 
-            onChange={e => setLineWidth(Number(e.target.value))}
-            className="w-12"
-          />
+          <div className="w-full h-px bg-gradient-to-r from-transparent via-zinc-700 to-transparent my-1" />
           
-          <button onClick={undo} className="w-12 h-12 bg-zinc-700 text-white rounded-lg text-xs">Undo</button>
-          <button onClick={clearCanvas} className="w-12 h-12 bg-red-500 text-white rounded-lg text-xs">Clear</button>
+          {/* Action Buttons */}
+          <button 
+            onClick={undo} 
+            className="w-full aspect-square bg-zinc-800/50 hover:bg-zinc-700/50 text-white rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105"
+            title="Undo"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+            </svg>
+          </button>
+          
+          <button 
+            onClick={clearCanvas} 
+            className="w-full aspect-square bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105 border border-red-500/20"
+            title="Clear Canvas"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
         </div>
         
-        <div className="flex-1 p-4">
+        {/* Enhanced Canvas Container */}
+        <div className="flex-1 bg-zinc-900/30 backdrop-blur-xl border border-zinc-800/50 rounded-2xl p-4 shadow-2xl overflow-hidden">
           <canvas
             ref={canvasRef}
-            className={`w-full h-full bg-black rounded-lg ${
+            className={`w-full h-full bg-zinc-950 rounded-xl shadow-inner ${
               tool === 'select' ? 'cursor-crosshair' : 'cursor-crosshair'
             }`}
             onMouseDown={startDrawing}
@@ -564,8 +605,11 @@ function CanvasPage() {
 export default function Page() {
   return (
     <Suspense fallback={
-      <div className="bg-zinc-900 min-h-screen flex items-center justify-center text-white">
-        Loading...
+      <div className="bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white text-lg font-medium">Loading Canvas...</p>
+        </div>
       </div>
     }>
       <CanvasPage />

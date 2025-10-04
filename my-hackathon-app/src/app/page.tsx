@@ -84,9 +84,11 @@ export default function CollaborativeDrawingLanding() {
 
        
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-20">
-            <button className="px-12 py-4 bg-white text-black font-medium rounded-lg hover:bg-zinc-100 transform hover:scale-105 transition-all duration-200 text-sm uppercase tracking-wide shadow-2xl">
-              Start Drawing
-            </button>
+           <Link href="/join">
+  <button className="px-12 py-4 bg-white text-black font-medium rounded-lg hover:bg-zinc-100 transform hover:scale-105 transition-all duration-200 text-sm uppercase tracking-wide shadow-2xl">
+    Start Drawing
+  </button>
+</Link>
            
           </div>
 

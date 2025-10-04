@@ -551,9 +551,14 @@ function CanvasPage() {
     </div>
   );
 }
-export default function CanvasPageWrapper() {
+
+export default function Page() {
   return (
-    <Suspense fallback={<div className="bg-zinc-900 min-h-screen flex items-center justify-center text-white">Loading...</div>}>
+    <Suspense fallback={
+      <div className="bg-zinc-900 min-h-screen flex items-center justify-center text-white">
+        Loading...
+      </div>
+    }>
       <CanvasPage />
     </Suspense>
   );

@@ -1,8 +1,7 @@
 
-create extension if not exists "uuid-ossp" with schema extensions;
 
 create table public.users (
-    id uuid primary key default uuid_generate_v4(),
+    id uuid primary key default gen_random_uuid(),
     email text unique not null,
     password text not null,
     name text not null,

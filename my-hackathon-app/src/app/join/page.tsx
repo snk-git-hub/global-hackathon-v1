@@ -3,13 +3,13 @@ import Link from 'next/link'
 import { useState, useEffect } from "react";
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
-
+import { User } from '@supabase/supabase-js';
 export default function JoinRoom() {
   const router = useRouter();
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [roomId, setRoomId] = useState("");
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
-  const [user, setUser] = useState(null);
+const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [createdRoomId, setCreatedRoomId] = useState(""); // Store the successfully created room ID
 

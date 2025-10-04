@@ -1,6 +1,7 @@
 {
   "name": "acta-hackathon-starter",
   "version": "1.0.0",
+  "packageManager": "pnpm@10.18.0",
   "description": "ACTA 24-hour Global Hackathon starter repository",
   "main": "index.js",
   "scripts": {

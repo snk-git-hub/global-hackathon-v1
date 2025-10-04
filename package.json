@@ -5,8 +5,11 @@
   "main": "index.js",
   "scripts": {
     "verify": "node verify-submission.js",
-    "start": "echo 'Add your start command here!'",
-    "test": "echo 'Add your test command here!'"
+    "dev": "turbo run dev",
+    "start": "turbo run start",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test"
   },
   "keywords": [
     "hackathon",
@@ -18,6 +21,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/actastudios/global-hackathon-v1"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.8"
   }
 }
-

@@ -45,6 +45,8 @@ function CanvasPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiResponse, setAiResponse] = useState<{text: string, pos: Point} | null>(null);
 
+  const DEMO_ROOM_ID = '00000000-0000-0000-0000-000000000001';
+
   // Get room ID
   useEffect(() => {
     const room = searchParams.get("room");
@@ -52,7 +54,7 @@ function CanvasPage() {
     else router.push("/join");
   }, [searchParams, router]);
 
-  // Redraw canvas function
+  // Redraw canvas function with bigger text and word wrapping
   const redrawCanvas = useCallback((actions: DrawAction[]) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -74,15 +76,39 @@ function CanvasPage() {
       }
     });
 
-    // Draw AI response if exists
+    // Draw AI response if exists with bigger text and word wrapping
     if (aiResponse) {
-      ctx.font = '28px "Caveat", cursive';
-      ctx.fillStyle = "#10b981";
-      ctx.shadowColor = "#10b981";
-      ctx.shadowBlur = 8;
-      const lines = aiResponse.text.split('\n');
+      ctx.font = '42px "Caveat", cursive';
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = "#ffffff";
+      ctx.shadowBlur = 10;
+      
+      // Split into lines with max 7 words per line
+      const words = aiResponse.text.split(/\s+/);
+      const lines: string[] = [];
+      let currentLine = '';
+      let wordCount = 0;
+      
+      words.forEach((word) => {
+        if (word === '\n' || wordCount >= 7) {
+          if (currentLine.trim()) {
+            lines.push(currentLine.trim());
+          }
+          currentLine = word === '\n' ? '' : word + ' ';
+          wordCount = word === '\n' ? 0 : 1;
+        } else {
+          currentLine += word + ' ';
+          wordCount++;
+        }
+      });
+      
+      if (currentLine.trim()) {
+        lines.push(currentLine.trim());
+      }
+      
+      // Draw the wrapped lines
       lines.forEach((line, i) => {
-        ctx.fillText(line, aiResponse.pos.x, aiResponse.pos.y + i * 35);
+        ctx.fillText(line, aiResponse.pos.x, aiResponse.pos.y + i * 50);
       });
       ctx.shadowBlur = 0;
     }
@@ -286,7 +312,33 @@ function CanvasPage() {
       if (result.response) {
         const rightX = Math.max(selectionStart.x, selectionEnd.x);
         const centerY = (selectionStart.y + selectionEnd.y) / 2;
-        const responsePos = { x: rightX + 10, y: centerY };
+        
+        // Calculate safe position to keep text within canvas bounds
+        let textX = rightX + 10;
+        let textY = centerY;
+        
+        // If text would go off the right edge, place it on the left side of selection
+        const estimatedTextWidth = 400; // Approximate width for text
+        if (textX + estimatedTextWidth > canvas.width) {
+          textX = Math.min(selectionStart.x, selectionEnd.x) - estimatedTextWidth - 10;
+          // If still off screen, place it at a safe margin from left
+          if (textX < 20) {
+            textX = 20;
+          }
+        }
+        
+        // Keep text Y position within canvas bounds with margins
+        const estimatedLines = Math.ceil(result.response.split(/\s+/).length / 7);
+        const estimatedHeight = estimatedLines * 50 + 50; // Line height * lines + padding
+        
+        if (textY + estimatedHeight > canvas.height) {
+          textY = canvas.height - estimatedHeight - 20;
+        }
+        if (textY < 50) {
+          textY = 50;
+        }
+        
+        const responsePos = { x: textX, y: textY };
         setAiResponse({ text: result.response, pos: responsePos });
         animateTextResponse(result.response, responsePos);
       }
@@ -307,22 +359,47 @@ function CanvasPage() {
     if (!ctx) return;
 
     let charIndex = 0;
-    const lines = text.split('\n');
+    
+    // Pre-process text into lines with max 7 words each
+    const words = text.split(/\s+/);
+    const lines: string[] = [];
+    let currentLine = '';
+    let wordCount = 0;
+    
+    words.forEach((word) => {
+      if (word === '\n' || wordCount >= 7) {
+        if (currentLine.trim()) {
+          lines.push(currentLine.trim());
+        }
+        currentLine = word === '\n' ? '' : word + ' ';
+        wordCount = word === '\n' ? 0 : 1;
+      } else {
+        currentLine += word + ' ';
+        wordCount++;
+      }
+    });
+    
+    if (currentLine.trim()) {
+      lines.push(currentLine.trim());
+    }
+    
+    // Flatten back to text with explicit newlines
+    const wrappedText = lines.join('\n');
     
     const animate = () => {
-      if (charIndex <= text.length) {
+      if (charIndex <= wrappedText.length) {
         redrawCanvas(history);
         
-        ctx.font = '28px "Caveat", cursive';
-        ctx.fillStyle = "#10b981";
-        ctx.shadowColor = "#10b981";
-        ctx.shadowBlur = 8;
+        ctx.font = '42px "Caveat", cursive';
+        ctx.fillStyle = "#ffffff";
+        ctx.shadowColor = "#ffffff";
+        ctx.shadowBlur = 10;
         
         let currentLine = 0;
         let charsInLine = 0;
         
-        for (let i = 0; i < charIndex && i < text.length; i++) {
-          if (text[i] === '\n') {
+        for (let i = 0; i < charIndex && i < wrappedText.length; i++) {
+          if (wrappedText[i] === '\n') {
             currentLine++;
             charsInLine = 0;
           } else {
@@ -332,25 +409,25 @@ function CanvasPage() {
         
         lines.forEach((line, i) => {
           if (i < currentLine) {
-            const waveOffset = Math.sin(Date.now() / 500 + i) * 0.5;
-            ctx.fillText(line, startPos.x, startPos.y + i * 35 + waveOffset);
+            const waveOffset = Math.sin(Date.now() / 500 + i) * 0.8;
+            ctx.fillText(line, startPos.x, startPos.y + i * 50 + waveOffset);
           } else if (i === currentLine) {
             const displayText = line.substring(0, charsInLine);
-            const waveOffset = Math.sin(Date.now() / 500 + i) * 0.5;
-            ctx.fillText(displayText, startPos.x, startPos.y + i * 35 + waveOffset);
+            const waveOffset = Math.sin(Date.now() / 500 + i) * 0.8;
+            ctx.fillText(displayText, startPos.x, startPos.y + i * 50 + waveOffset);
             
-            if (charIndex < text.length && text[charIndex] !== '\n') {
+            if (charIndex < wrappedText.length && wrappedText[charIndex] !== '\n') {
               const textWidth = ctx.measureText(displayText).width;
               ctx.beginPath();
               ctx.arc(
-                startPos.x + textWidth + 5,
-                startPos.y + i * 35 + waveOffset - 5,
-                3,
+                startPos.x + textWidth + 8,
+                startPos.y + i * 50 + waveOffset - 8,
+                4,
                 0,
                 Math.PI * 2
               );
-              ctx.fillStyle = "#10b981";
-              ctx.shadowBlur = 15;
+              ctx.fillStyle = "#ffffff";
+              ctx.shadowBlur = 18;
               ctx.fill();
             }
           }
@@ -359,7 +436,7 @@ function CanvasPage() {
         ctx.shadowBlur = 0;
         charIndex++;
         
-        const delay = text[charIndex - 1] === ' ' ? 20 : 40;
+        const delay = wrappedText[charIndex - 1] === ' ' ? 20 : 40;
         setTimeout(animate, delay);
       }
     };
@@ -448,39 +525,58 @@ function CanvasPage() {
     <div className="bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 min-h-screen flex flex-col">
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap');
+        body {
+          overscroll-behavior: none;
+          touch-action: none;
+        }
       `}</style>
       
       {/* Enhanced Header */}
-      <nav className="bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800/50 px-6 py-4">
+      <nav className="bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800/50 px-3 sm:px-6 py-3 sm:py-4">
         <div className="flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
-                <span className="text-white font-bold text-lg">✏️</span>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                <span className="text-white font-bold text-base sm:text-lg">✏️</span>
               </div>
-              <div>
+              <div className="hidden sm:block">
                 <h1 className="text-white font-semibold text-lg">Draw & Solve</h1>
                 <p className="text-zinc-400 text-xs">Collaborative AI Canvas</p>
               </div>
+              <h1 className="text-white font-semibold text-base sm:hidden">Draw & Solve</h1>
             </div>
           </div>
           
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2 sm:gap-6">
             {isProcessing && (
-              <div className="flex items-center gap-2 bg-blue-500/10 px-4 py-2 rounded-full border border-blue-500/20">
-                <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm text-blue-400 font-medium">AI Processing...</span>
+              <div className="flex items-center gap-2 bg-blue-500/10 px-2 sm:px-4 py-1 sm:py-2 rounded-full border border-blue-500/20">
+                <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs sm:text-sm text-blue-400 font-medium hidden sm:inline">AI Processing...</span>
               </div>
             )}
             
-            <div className="flex items-center gap-3 bg-zinc-800/50 px-4 py-2 rounded-full border border-zinc-700/50">
-              <span className="text-zinc-400 text-sm font-medium">Room:</span>
-              <span className="text-white font-mono font-semibold tracking-wider">{roomId}</span>
+            <div className="flex items-center gap-2 sm:gap-3 bg-zinc-800/50 px-2 sm:px-4 py-1 sm:py-2 rounded-full border border-zinc-700/50">
+              <span className="text-zinc-400 text-xs sm:text-sm font-medium hidden sm:inline">Room:</span>
+              <span className="text-white font-mono font-semibold tracking-wider text-xs sm:text-sm">{roomId.slice(0, 8)}...</span>
               <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"} shadow-lg ${isConnected ? 'shadow-green-500/50' : 'shadow-red-500/50'}`} />
             </div>
           </div>
         </div>
       </nav>
+
+      {/* Demo Room Banner */}
+      {roomId === DEMO_ROOM_ID && (
+        <div className="bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 border-b border-white/10 px-4 py-3">
+          <div className="flex items-center justify-center gap-2">
+            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <p className="text-white text-sm font-medium">
+              🎨 <strong>Demo Canvas</strong> - Draw freely with AI assistance, no account needed!
+            </p>
+          </div>
+        </div>
+      )}
       
       <div className="flex flex-1 overflow-hidden p-4 gap-4">
         {/* Enhanced Sidebar */}

@@ -124,13 +124,6 @@ No context switching. No copy-pasting. Everything happens right on your canvas.
 
 This is the initial release with core functionality. We're actively developing new features and improvements.
 
-### Coming Soon
-- Enhanced drawing tools
-- More AI model options
-- Template library
-- Export functionality
-- Mobile optimization
-- Advanced collaboration features
 
 ## 📚 Learn More
 
@@ -139,33 +132,5 @@ This is the initial release with core functionality. We're actively developing n
 - [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial
 - [Next.js GitHub repository](https://github.com/vercel/next.js)
 
-## 🚀 Deployment
-
-### Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme).
-
-Check out the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-### Other Deployment Options
-- AWS Amplify
-- Netlify
-- Railway
-- Docker containers
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-[Add your license here]
-
-## 💡 Feedback & Support
-
-Have questions or suggestions? We'd love to hear from you!
-
-- Open an issue on GitHub
-- [Add your contact/support channels]
 
 ---

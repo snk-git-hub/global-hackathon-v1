@@ -1,8 +1,8 @@
 # AI-Powered Collaborative Drawing Canvas
 
 A real-time collaborative drawing application with integrated AI assistance that helps you solve problems, understand concepts, and visualize ideas - all without leaving your canvas.
+![screen-capture](https://github.com/user-attachments/assets/c63c2b39-bcf9-4385-8a06-c0b334c9f6ee)
 
-![Uploading drw.gif…]()
 
 ## Overview
 

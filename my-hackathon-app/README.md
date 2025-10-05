@@ -2,7 +2,7 @@
 
 A real-time collaborative drawing application with integrated AI assistance that helps you solve problems, understand concepts, and visualize ideas - all without leaving your canvas.
 
-![Uploading screen-capture (1).gif…]()
+![Uploading drw.gif…]()
 
 ## Overview
 

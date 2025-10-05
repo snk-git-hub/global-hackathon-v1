@@ -90,6 +90,11 @@ export default function CollaborativeDrawingLanding() {
   </button>
 </Link>
            
+           <Link href="/canvas?room=00000000-0000-0000-0000-000000000001">
+  <button className="px-12 py-4 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 text-white font-medium rounded-lg hover:opacity-90 transform hover:scale-105 transition-all duration-200 text-sm uppercase tracking-wide shadow-2xl border border-white/20">
+    Try Demo
+  </button>
+</Link>
           </div>
 
           <div className="relative max-w-4xl mx-auto">
